@@ -1,0 +1,70 @@
+---
+title: "Whisper data processing in R"
+author: "Eirik Tengesdal"
+date: "`r Sys.Date()`"
+output: html_document
+---
+Initial document date: 10.05.2024.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(readr)
+library(jsonlite)
+library(purrr)
+
+path <- "C:\\Users\\eirik\\OneDrive - OsloMet\\Documents\\Github\\Whisper-JSON-processing\\"
+```
+
+# Import Whisper output data to R
+
+This script is designed to import Whisper output data from JSON files to R. The script is designed to be flexible and can be used to import multiple JSON files at once, or just one specific file. The script will also process the imported data to make it easier to work with in R.
+
+The default behaviour is to import all JSON files in the specified folder. If you want to import only one specific file, you can specify the file name in the code. Uncomment/comment (Windows hotkey: CTRL+SHIFT+C) the relevant code blocks for the desired import method.
+
+## Step 1: Import Whisper (JSON) output data
+
+<!-- ### Option 1.1: Import converted CSV data to tibble -->
+<!-- ```{r import CSV, echo=TRUE} -->
+<!-- data <- readr::read_csv(paste0(path, "Whisper_results.csv")) -->
+<!-- ``` -->
+
+### Option 1.2: Import unspecified JSON file(-s) from the path folder to DF
+```{r import JSON file(-s) from path, echo=TRUE}
+json_files <- dir(path, pattern = "*.json")
+
+data <- json_files %>%
+  purrr::set_names() %>%
+  purrr::map_df(.,
+                .f = ~fromJSON(file.path(path, .), simplifyVector = TRUE),
+                .id = "name") %>%
+  mutate(text = trimws(text))
+```
+
+<!-- ### Option 1.3: Import one specified raw Whisper (JSON) output data to DF -->
+<!-- ```{r import one JSON, echo=TRUE} -->
+<!-- data <- fromJSON(paste0(path, "NO0170dbWhisper.json"), -->
+<!--                                     simplifyVector = TRUE) %>% -->
+<!--   mutate(name = "NO0170dbWhisper", .after = id) %>% -->
+<!--   select(-id) %>% -->
+<!--   mutate(text = trimws(text)) -->
+<!-- ``` -->
+
+
+## Step 2: Process the imported data
+```{r process data, echo=TRUE}
+data <- data %>%
+  # Only import the columns we need
+  select(name, start, end, text) %>%
+  # Remove the "[N][N]dbWhisper" and any following part of the name for participant_id
+  mutate(participant_id = str_replace(name, "(?<=[:alpha:][:alpha:][0-9][0-9]).*", ""),
+         .after = name) %>%
+  # Optional: Keep the `name` column; comment next line:
+  select(-name) %>%
+  # Warn if there are multiple sentences in one cell (i.e., more than 1 full stop); might need to be split/processed
+  mutate(warning = if_else(str_count(text, '\\.') > 1, "Multiple sentences in one cell", "")) %>%
+  # Remove any <U+FFFD> (replacement) character from the text
+  mutate(text = gsub("\uFFFD", "", text, fixed=TRUE))
+
+head(data)
+```
